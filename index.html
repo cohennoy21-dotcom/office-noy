@@ -1,8 +1,12 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>מעקב פניות נוי כהן</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Heebo:wght@300;400;500;700&display=swap">
 <style>
-/* Layout: black workspace, logo band on top, four views (today, leads, summary, new). Phone: nav fixed at the bottom; wide screens: nav sticky at the top. Lead details open in a panel. Data lives on the server. */
+/* Layout: black workspace, logo band on top, four views (today, leads, summary, new). Phone: nav fixed at the bottom; wide screens: nav sticky at the top. Lead details open in a panel. Data lives in the owner's Google Sheet. */
 :root{
   --ink:#0a0907;--panel:#14110c;--panel2:#1b160e;--gold:#c9974a;--gold-hi:#e2b550;--gold-soft:#f6df8a;
   --line:#3a2e18;--text:#f3e9d2;--muted:#b9a97f;--ok:#8fc98a;--warn:#e0a35c;--bad:#d98a7a;--onGold:#1a1306;
@@ -20,6 +24,7 @@ body.locked{overflow:hidden}
 .brand .t{display:flex;flex-direction:column}
 .brand h1{font-family:var(--display);font-size:26px;margin:0;color:var(--gold-hi);line-height:1.2}
 .brand span{font-size:13px;color:var(--muted)}
+.brand .t .btn{align-self:flex-start;margin-top:8px}
 
 /* nav */
 .nav{position:fixed;inset:auto 0 0 0;z-index:20;background:var(--ink);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);direction:rtl}
@@ -78,6 +83,12 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .msg{color:var(--muted);font-size:14px}.err{color:var(--bad)}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 
+.setup{display:flex;flex-direction:column;gap:14px}
+.setup h2{margin:0}
+.setup .hint,.setup .steps{margin:0;color:var(--muted);font-size:15px}
+.setup .steps{padding-inline-start:1.2em;display:flex;flex-direction:column;gap:4px}
+.setup a{color:var(--gold-hi)}
+
 /* lead rows */
 .list{display:flex;flex-direction:column;border:1px solid var(--line);background:var(--panel)}
 .item{font:inherit;color:inherit;background:none;border:0;border-bottom:1px solid var(--line);text-align:right;padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:4px 12px;cursor:pointer;width:100%;border-inline-start:3px solid transparent}
@@ -115,22 +126,54 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .saved{font-size:13px;color:var(--ok);min-height:20px}
 @media (prefers-reduced-motion:no-preference){.panel{animation:up .18s ease-out}@keyframes up{from{transform:translateY(16px);opacity:.6}to{transform:none;opacity:1}}}
 </style>
-
+</head>
+<body>
 <div class="wrap" dir="rtl" lang="he">
   <div class="brand">
-    <div class="t"><h1>מעקב פניות</h1><span>נוי כהן, ניהול משרד מרחוק</span></div>
+    <div class="t">
+      <h1>מעקב פניות</h1>
+      <span>נוי כהן, ניהול משרד מרחוק</span>
+      <button class="btn sm" id="settingsBtn" type="button" hidden>הגדרות</button>
+    </div>
     <img src="lockup.jpg" alt="לוגו נוי כהן" width="760" height="267">
   </div>
   <div id="status" class="msg" role="status">טוענת את הנתונים</div>
+  <noscript><p class="msg err">העמוד צריך JavaScript כדי לעבוד.</p></noscript>
 
-  <nav class="nav" role="tablist" aria-label="תצוגות">
+  <div id="setup" class="card setup" hidden>
+    <h2>חיבור לגיליון</h2>
+    <p class="hint">הפניות נשמרות בגיליון Google Sheets הפרטי שלך. הכתובת וקוד הגישה נשמרים רק בדפדפן הזה, לא באתר.</p>
+    <ol class="steps">
+      <li>יוצרים גיליון, ומדביקים בו את הסקריפט מהמאגר.</li>
+      <li>כותבים קוד גישה ופורסים אפליקציית רשת (הפעלה בתור: אני, גישה: כל המשתמשים).</li>
+      <li>מעתיקים את הכתובת שמסתיימת ב־exec.</li>
+    </ol>
+    <p class="hint"><a href="https://github.com/cohennoy21-dotcom/office-noy/blob/main/README.md" target="_blank" rel="noopener">ההסבר המלא, צעד אחר צעד</a></p>
+    <form class="grid" id="setupForm" autocomplete="off">
+      <label class="full" for="cfg-url">כתובת אפליקציית הרשת
+        <input id="cfg-url" type="url" class="ltr" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" required>
+      </label>
+      <label class="full" for="cfg-pass">קוד הגישה מהסקריפט, לא הסיסמה של גוגל
+        <input id="cfg-pass" type="password" class="ltr" autocomplete="off" spellcheck="false" required>
+      </label>
+      <label class="chk"><input id="cfg-show" type="checkbox">הצגת הקוד</label>
+      <div class="full row">
+        <button class="btn" type="submit" id="cfg-submit">התחברות</button>
+        <button class="btn sm" type="button" id="cfg-back" hidden>חזרה</button>
+        <button class="btn sm danger" type="button" id="cfg-off" hidden>ניתוק</button>
+      </div>
+      <p id="setupMsg" class="msg full" role="status"></p>
+    </form>
+  </div>
+
+  <nav class="nav" id="nav" role="tablist" aria-label="תצוגות" hidden>
     <button class="tab" role="tab" id="t-today" aria-selected="true" data-view="today"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>היום</span><span class="badge" id="badge" hidden></span></button>
     <button class="tab" role="tab" id="t-list" aria-selected="false" data-view="list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg><span>פניות</span></button>
     <button class="tab" role="tab" id="t-sum" aria-selected="false" data-view="sum"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg><span>סיכום</span></button>
     <button class="tab" role="tab" id="t-add" aria-selected="false" data-view="add"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>פנייה חדשה</span></button>
   </nav>
 
-  <div class="view" id="v-today">
+  <div class="view" id="v-today" hidden>
     <div class="tiles" id="todayTiles"></div>
     <section aria-labelledby="h-late"><h2 id="h-late">באיחור</h2><div id="lateList"></div></section>
     <section aria-labelledby="h-tod"><h2 id="h-tod">לחזור היום</h2><div id="todList"></div></section>
@@ -185,7 +228,22 @@ var PACKAGES={"בסיס":1500,"שוטפת":2900,"מורחבת":5600};
 var SOURCES=["קבוצת פייסבוק","חבר או מכר","נטוורקינג","המלצה","אחר"];
 var SERVICES=["ניהול יומן ומיילים","הנהלת חשבונות","שירות לקוחות","הקלדה ותמלול","הזנת נתונים","מזכירות כללית","אחר"];
 var LOSS=["מחיר","לא מתאים","ביקש לחשוב","אחר"];
-var coll=null,leads=[],filter="פתוחות",query="",sortBy="fu",openId=null,downloads=null;
+var leads=[],filter="פתוחות",query="",sortBy="fu",openId=null;
+var mode="loading",connectedOnce=false,chain=Promise.resolve(),writeDepth=0,savedTimer=null;
+var LS_URL="noy-office-webapp-url",LS_PASS="noy-office-passcode";
+var ERRORS={
+  unauthorized:"הקוד לא נכון. בדקי את קוד הגישה שהגדרת בסקריפט.",
+  not_configured:"בסקריפט עדיין אין קוד גישה. כתבי קוד בשורת PASSCODE, שמרי, ופרסי גרסה חדשה.",
+  bad_request:"הבקשה לא הייתה תקינה. נסי שוב.",
+  not_found:"הפנייה לא נמצאה בגיליון. ייתכן שכבר נמחקה.",
+  bad_sheet:"לשונית הפניות בגיליון לא בפורמט הנכון. אם היא ריקה, אפשר למחוק אותה ולרענן.",
+  no_sheet:"הסקריפט לא מחובר לגיליון. פותחים אותו מתוך הגיליון: תוספים, ואז Apps Script.",
+  bad_response:"הגיליון ענה בצורה לא מוכרת. ודאי שפרסת אפליקציית רשת עם גישה לכל המשתמשים (Anyone), והרצה בתור אני (Me).",
+  network:"לא הצלחתי להתחבר לגיליון. בדקי את הכתובת ואת החיבור לאינטרנט.",
+  timeout:"הגיליון לא ענה בזמן. נסי שוב. בפעם הראשונה החיבור לפעמים איטי.",
+  not_connected:"המכשיר הזה עדיין לא מחובר לגיליון.",
+  server:"משהו השתבש בגיליון. נסי שוב בעוד רגע."
+};
 
 function $(id){return document.getElementById(id)}
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
@@ -210,8 +268,7 @@ function show(v){
   window.scrollTo(0,0);
 }
 document.querySelectorAll(".tab").forEach(function(b){b.addEventListener("click",function(){show(b.dataset.view)})});
-(function(){var h=location.hash.slice(1);if(VIEWS.indexOf(h)>=0)show(h)})();
-window.addEventListener("hashchange",function(){var h=location.hash.slice(1);if(VIEWS.indexOf(h)>=0)show(h)});
+window.addEventListener("hashchange",function(){if(mode!=="app")return;var h=location.hash.slice(1);if(VIEWS.indexOf(h)>=0)show(h)});
 
 /* lead row */
 function leadRow(l){
@@ -298,17 +355,21 @@ function renderSummary(){
   tableRows($("pkTable"),["חבילה","לקוחות","מחיר חודשי"],Object.keys(PACKAGES).map(function(p){return [p,won.filter(function(l){return l.package===p}).length,PACKAGES[p].toLocaleString("he-IL")+" ₪"]}),"");
   var lr=LOSS.map(function(x){return [x,lost.filter(function(l){return l.lostReason===x}).length]}).filter(function(r){return r[1]});
   tableRows($("lossTable"),["סיבה","פניות"],lr,"עדיין אין פניות שלא נסגרו");
-  $("exportBtn").hidden=!(downloads&&total);
+  $("exportBtn").hidden=!total;
 }
 
 /* saving */
-var savedTimer=null;
 function save(id,patch){
-  if(!coll)return Promise.resolve();
-  patch.updatedAt=Date.now();
-  return coll.doc(id).update(patch).then(function(){
-    var s=$("p-saved");if(s){s.textContent="נשמר";clearTimeout(savedTimer);savedTimer=setTimeout(function(){var s2=$("p-saved");if(s2)s2.textContent=""},1800)}
-  }).catch(function(){var s=$("p-saved");if(s){s.className="saved err";s.textContent="לא הצלחתי לשמור. נסי שוב."}else setStatus("לא הצלחתי לשמור. נסי שוב בעוד רגע.",true)});
+  var s=$("p-saved");if(s){s.className="saved";s.textContent="שומרת…"}
+  return enqueue(function(){
+    return api({action:"update",id:id,patch:patch}).then(function(){
+      var s2=$("p-saved");if(s2){s2.className="saved";s2.textContent="נשמר";clearTimeout(savedTimer);savedTimer=setTimeout(function(){var s3=$("p-saved");if(s3)s3.textContent=""},1800)}
+    }).catch(function(err){
+      var s2=$("p-saved");var msg=errText(err);
+      if(s2){s2.className="saved err";s2.textContent=msg}else setStatus(msg,true);
+      if(err&&(err.message==="unauthorized"||err.message==="not_configured"))showSetup(msg,true);
+    });
+  });
 }
 function findLead(id){for(var i=0;i<leads.length;i++)if(leads[i].id===id)return leads[i];return null}
 
@@ -404,8 +465,13 @@ function renderPanel(){
   /* delete */
   var del=el("button","btn sm danger","מחיקת הפנייה");del.type="button";
   del.addEventListener("click",function(){
-    if(del.dataset.arm){coll.doc(l.id).delete().then(closeLead).catch(function(){sv.className="saved err";sv.textContent="לא הצלחתי למחוק."})}
-    else{del.dataset.arm="1";del.textContent="לחצי שוב כדי למחוק";setTimeout(function(){del.dataset.arm="";del.textContent="מחיקת הפנייה"},3000)}});
+    if(del.dataset.arm){
+      del.disabled=true;
+      enqueue(function(){
+        return api({action:"delete",id:l.id}).then(closeLead).catch(function(err){del.disabled=false;sv.className="saved err";sv.textContent=errText(err)});
+      });
+    }else{del.dataset.arm="1";del.textContent="לחצי שוב כדי למחוק";setTimeout(function(){if(!del.dataset.arm)return;del.dataset.arm="";del.textContent="מחיקת הפנייה"},3000)}
+  });
   var dr=el("div","row");dr.appendChild(del);body.appendChild(dr);
 }
 
@@ -421,44 +487,185 @@ function renderAll(){
 
 /* new lead */
 $("addForm").addEventListener("submit",function(e){
-  e.preventDefault();if(!coll)return;
+  e.preventDefault();if(mode!=="app")return;
   var b=$("f-submit");b.disabled=true;
   var now=Date.now();
-  var data={date:$("f-date").value,name:$("f-name").value.trim(),phone:$("f-phone").value.trim(),email:$("f-mail").value.trim(),source:$("f-src").value,detail:$("f-det").value.trim(),service:$("f-svc").value,followUp:$("f-fu").value,note:$("f-note").value.trim(),status:"חדש",meeting:false,package:"",lostReason:"",log:[],createdAt:now,updatedAt:now};
-  coll.add(data).then(function(){
-    ["f-name","f-phone","f-mail","f-det","f-fu","f-note","f-src","f-svc"].forEach(function(i){$(i).value=""});
-    $("f-date").value=today();
-    $("f-msg").className="msg";$("f-msg").textContent="הפנייה נשמרה";setTimeout(function(){$("f-msg").textContent=""},2500);
-    $("f-name").focus();
-  }).catch(function(){$("f-msg").className="msg err";$("f-msg").textContent="לא הצלחתי לשמור. נסי שוב."}).then(function(){b.disabled=false});
+  var data={id:newId(),date:$("f-date").value,name:$("f-name").value.trim(),phone:$("f-phone").value.trim(),email:$("f-mail").value.trim(),source:$("f-src").value,detail:$("f-det").value.trim(),service:$("f-svc").value,followUp:$("f-fu").value,note:$("f-note").value.trim(),status:"חדש",meeting:false,package:"",lostReason:"",log:[],createdAt:now,updatedAt:now};
+  enqueue(function(){
+    return api({action:"create",lead:data}).then(function(){
+      ["f-name","f-phone","f-mail","f-det","f-fu","f-note","f-src","f-svc"].forEach(function(i){$(i).value=""});
+      $("f-date").value=today();
+      $("f-msg").className="msg";$("f-msg").textContent="הפנייה נשמרה";setTimeout(function(){$("f-msg").textContent=""},2500);
+      $("f-name").focus();
+    }).catch(function(err){
+      var extra=(err&&(err.message==="network"||err.message==="timeout"||err.message==="bad_response"))?" רענני את העמוד לפני ניסיון נוסף, כדי שלא תיווצר פנייה כפולה.":"";
+      $("f-msg").className="msg err";$("f-msg").textContent=errText(err)+extra;
+    }).then(function(){b.disabled=false});
+  });
 });
 
 /* export */
 function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
 $("exportBtn").addEventListener("click",function(){
-  if(!downloads)return;
+  if(!leads.length)return;
   var head=["תאריך","שם","טלפון","מייל","ערוץ","פירוט","שירות","סטטוס","פגישה התקיימה","חבילה","סיבה","תאריך לחזור","הערות","יומן"];
   var lines=[head.join(",")].concat(leads.map(function(l){return [fmt(l.date),l.name,l.phone,l.email,l.source,l.detail,l.service,l.status,l.meeting?"כן":"לא",l.package,l.lostReason,fmt(l.followUp),l.note,(l.log||[]).map(function(x){return fmtTime(x.t)+" "+x.text}).join(" | ")].map(csvCell).join(",")}));
-  downloads.save({filename:"מעקב פניות נוי כהן.csv",data:"﻿"+lines.join("\r\n")}).then(function(){$("exportMsg").textContent="הקובץ נשמר"},function(){$("exportMsg").textContent="השמירה בוטלה"});
+  var blob=new Blob(["\uFEFF"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  var a=document.createElement("a");
+  var url=URL.createObjectURL(blob);
+  a.href=url;a.download="מעקב פניות נוי כהן.csv";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url)},1500);
+  $("exportMsg").textContent="הקובץ ירד למכשיר";
 });
 
-/* refresh "today" when the date changes or the page comes back into view */
-document.addEventListener("visibilitychange",function(){if(!document.hidden)renderAll()});
+document.addEventListener("visibilitychange",function(){if(document.hidden||mode!=="app")return;renderAll();refreshQuiet()});
 
-/* data */
-renderAll();
-(function(){
-  var timer=setTimeout(function(){setStatus("הנתונים עדיין לא נטענו. ייתכן שהחיבור איטי.",true)},10000);
-  if(!window.claude||!window.claude.use){clearTimeout(timer);setStatus("הדף פועל רק בתוך Claude, אחרי התחברות.",true);return}
-  window.claude.use("downloads").then(function(d){downloads=d;renderSummary()});
-  window.claude.use("db").then(function(d){
-    if(!d){clearTimeout(timer);setStatus("אין גישה לנתונים. התחברי לחשבון שלך ופתחי את הדף שוב.",true);document.querySelectorAll("#addForm input,#addForm select,#addForm textarea,#addForm button").forEach(function(x){x.disabled=true});return}
-    coll=d.collection("leads");
-    coll.orderBy("createdAt","desc").onSnapshot(function(snap){
-      leads=snap.docs.map(function(x){var v=x.data();v.id=x.id;return v});
-      if(!snap.metadata.fromCache){clearTimeout(timer);setStatus("")}
-      renderAll();
-    },function(){clearTimeout(timer);setStatus("לא הצלחתי לקרוא את הנתונים.",true)});
+/* sheet connection */
+function errText(err){var code=err&&err.message;return ERRORS[code]||ERRORS.server}
+function loadConfig(){
+  try{return {url:(localStorage.getItem(LS_URL)||"").trim(),passcode:(localStorage.getItem(LS_PASS)||"").trim()}}
+  catch(e){return {url:"",passcode:""}}
+}
+function saveConfig(url,pass){localStorage.setItem(LS_URL,url);localStorage.setItem(LS_PASS,pass)}
+function clearConfig(){localStorage.removeItem(LS_URL);localStorage.removeItem(LS_PASS)}
+function cleanUrl(s){return String(s||"").trim().replace(/^['"]|['"]$/g,"").trim()}
+function validWebAppUrl(url){
+  if(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(exec|dev)\/?$/.test(url))return true;
+  if(/^https:\/\/script\.google\.com\/a\/macros\/[^/]+\/s\/[A-Za-z0-9_-]+\/(exec|dev)\/?$/.test(url))return true;
+  if(/^http:\/\/(127\.0\.0\.1|localhost):\d+\/exec\/?$/.test(url))return true;
+  return false;
+}
+function normLead(l){
+  l.meeting=l.meeting===true||l.meeting==="true"||l.meeting==="TRUE"||l.meeting==="כן";
+  if(typeof l.log==="string"){try{l.log=JSON.parse(l.log)}catch(e){l.log=[]}}
+  if(!Array.isArray(l.log))l.log=[];
+  l.createdAt=Number(l.createdAt)||0;l.updatedAt=Number(l.updatedAt)||0;
+  ["id","name","phone","email","source","detail","service","followUp","note","date","package","lostReason"].forEach(function(k){if(l[k]==null)l[k]=""});
+  l.status=l.status||"חדש";
+  return l;
+}
+function applyLeads(rows){leads=(rows||[]).map(normLead);renderAll()}
+function fetchTimeout(url,opts,ms){
+  return new Promise(function(resolve,reject){
+    var done=false;
+    var timer=setTimeout(function(){if(done)return;done=true;reject(new Error("timeout"))},ms);
+    fetch(url,opts).then(function(res){if(done)return;done=true;clearTimeout(timer);resolve(res)},function(){if(done)return;done=true;clearTimeout(timer);reject(new Error("network"))});
   });
-})();
+}
+function parseApi(raw){
+  var data;try{data=JSON.parse(String(raw||"").replace(/^\uFEFF/,"").trim())}catch(e){throw new Error("bad_json")}
+  if(!data||typeof data!=="object")throw new Error("bad_json");
+  return data;
+}
+function postRaw(url,text){
+  return fetchTimeout(url,{method:"POST",redirect:"follow",cache:"no-store",credentials:"omit",headers:{"Content-Type":"text/plain;charset=utf-8"},body:text},30000).then(function(res){return res.text()});
+}
+function getRaw(url,text){
+  var full=url+(url.indexOf("?")>=0?"&":"?")+"payload="+encodeURIComponent(text)+"&t="+Date.now();
+  if(full.length>7000)return Promise.reject(new Error("bad_response"));
+  return fetchTimeout(full,{method:"GET",redirect:"follow",cache:"no-store",credentials:"omit"},30000).then(function(res){return res.text()});
+}
+function requestApi(url,body){
+  var text=JSON.stringify(body);
+  return postRaw(url,text).then(parseApi).catch(function(err){
+    var message=err&&err.message;
+    if(message!=="bad_json"&&message!=="timeout"&&message!=="network")throw err;
+    return getRaw(url,text).then(parseApi);
+  }).catch(function(err){
+    if(err&&err.message==="bad_json")throw new Error("bad_response");
+    throw err;
+  });
+}
+function api(payload){
+  var cfg=loadConfig();
+  if(!cfg.url||!cfg.passcode||!validWebAppUrl(cfg.url))return Promise.reject(new Error("not_connected"));
+  var body={passcode:cfg.passcode,action:payload.action};
+  if(payload.id)body.id=payload.id;
+  if(payload.patch)body.patch=payload.patch;
+  if(payload.lead)body.lead=payload.lead;
+  return requestApi(cfg.url,body).then(function(data){
+    if(!data.ok)throw new Error(data.error||"server");
+    if(!Array.isArray(data.leads))throw new Error("bad_response");
+    applyLeads(data.leads);
+    return data;
+  });
+}
+function enqueue(fn){
+  writeDepth++;
+  var run=chain.then(function(){return fn()},function(){return fn()});
+  chain=run.then(function(v){writeDepth--;return v},function(e){writeDepth--;throw e});
+  return run;
+}
+function newId(){
+  if(window.crypto&&typeof crypto.randomUUID==="function")return crypto.randomUUID();
+  var s="";for(var i=0;i<32;i++)s+=Math.floor(Math.random()*16).toString(16);return s;
+}
+function setMode(next){
+  mode=next;
+  var app=next==="app";
+  $("setup").hidden=next!=="setup";
+  $("nav").hidden=!app;
+  $("settingsBtn").hidden=!app;
+  if(!app){VIEWS.forEach(function(k){$("v-"+k).hidden=true});if(openId)closeLead()}
+  else{var h=location.hash.slice(1);show(VIEWS.indexOf(h)>=0?h:"today")}
+}
+function showSetup(msg,bad){
+  var cfg=loadConfig();
+  if(cfg.url)$("cfg-url").value=cfg.url;
+  if(cfg.passcode)$("cfg-pass").value=cfg.passcode;
+  $("setupMsg").className="msg"+(bad?" err":"");
+  $("setupMsg").textContent=msg||"";
+  $("cfg-back").hidden=!connectedOnce;
+  $("cfg-off").hidden=!(cfg.url||cfg.passcode);
+  setMode("setup");
+  setStatus("");
+}
+function refreshQuiet(){
+  if(mode!=="app"||writeDepth>0)return;
+  enqueue(function(){
+    return api({action:"list"}).catch(function(err){
+      if(err.message==="unauthorized"||err.message==="not_configured")showSetup(errText(err),true);
+      else setStatus(errText(err),true);
+    });
+  });
+}
+$("settingsBtn").addEventListener("click",function(){showSetup("",false)});
+$("cfg-back").addEventListener("click",function(){if(!connectedOnce)return;setMode("app");setStatus("")});
+$("cfg-show").addEventListener("change",function(){$("cfg-pass").type=$("cfg-show").checked?"text":"password"});
+$("cfg-off").addEventListener("click",function(){
+  if(!window.confirm("לנתק את המכשיר הזה מהגיליון? הפניות נשארות בגיליון."))return;
+  try{clearConfig()}catch(e){}
+  leads=[];connectedOnce=false;
+  $("cfg-url").value="";$("cfg-pass").value="";$("cfg-show").checked=false;$("cfg-pass").type="password";
+  showSetup("המכשיר נותק. אפשר לחבר אותו שוב בכל רגע.",false);
+});
+$("setupForm").addEventListener("submit",function(e){
+  e.preventDefault();
+  var url=cleanUrl($("cfg-url").value),pass=$("cfg-pass").value.trim();
+  $("cfg-url").value=url;
+  if(!url||!pass){$("setupMsg").className="msg err";$("setupMsg").textContent="צריך למלא גם כתובת וגם קוד גישה.";return}
+  if(!validWebAppUrl(url)){$("setupMsg").className="msg err";$("setupMsg").textContent="הכתובת צריכה להיות כתובת אפליקציית הרשת מגוגל, ולהסתיים ב־/exec.";return}
+  try{saveConfig(url,pass)}catch(err){$("setupMsg").className="msg err";$("setupMsg").textContent="הדפדפן לא נתן לשמור את הפרטים במכשיר. כדאי לבדוק שאין חסימה של שמירת נתונים.";return}
+  var btn=$("cfg-submit"),back=$("cfg-back"),label=btn.textContent;
+  btn.disabled=true;back.disabled=true;btn.textContent="מתחברת…";
+  $("setupMsg").className="msg";$("setupMsg").textContent="מתחברת לגיליון…";
+  var slow=setTimeout(function(){if($("setupMsg").textContent.indexOf("מתחברת")>=0)$("setupMsg").textContent="עדיין מתחברת. בפעם הראשונה זה יכול לקחת קצת."},8000);
+  api({action:"list"}).then(function(){
+    connectedOnce=true;setMode("app");setStatus("");$("setupMsg").textContent="";
+  }).catch(function(err){
+    $("setupMsg").className="msg err";$("setupMsg").textContent=errText(err);$("cfg-off").hidden=false;
+  }).then(function(){clearTimeout(slow);btn.disabled=false;back.disabled=false;btn.textContent=label});
+});
+function boot(){
+  var cfg=loadConfig();
+  if(!cfg.url||!cfg.passcode){showSetup("");return}
+  $("cfg-url").value=cfg.url;$("cfg-pass").value=cfg.passcode;
+  setMode("loading");setStatus("מתחברת לגיליון…");
+  var slow=setTimeout(function(){if(mode==="loading")setStatus("עדיין מתחברת לגיליון. בפעם הראשונה זה יכול לקחת קצת.")},8000);
+  api({action:"list"}).then(function(){clearTimeout(slow);connectedOnce=true;setMode("app");setStatus("")}).catch(function(err){clearTimeout(slow);showSetup(errText(err),true)});
+}
+boot();
 </script>
+</body>
+</html>
