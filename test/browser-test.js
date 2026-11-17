@@ -11,9 +11,9 @@ function assert(cond, msg) {
 
 function delay(ms) { return new Promise(function(resolve) { setTimeout(resolve, ms); }); }
 
-async function shot(page, name) {
+async function shot(page, name, fullPage) {
   fs.mkdirSync(ART, { recursive: true });
-  await page.screenshot({ path: path.join(ART, name), fullPage: true });
+  await page.screenshot({ path: path.join(ART, name), fullPage: fullPage !== false });
 }
 
 async function waitFor(page, fn, msg) {
@@ -245,23 +245,50 @@ async function main() {
     await shot(page, "summary.png");
 
     await page.click("#t-list");
-    await page.evaluate(function() {
-      var chip = Array.prototype.slice.call(document.querySelectorAll("#chips button")).find(function(b) { return b.textContent.indexOf("הכל") === 0; });
-      chip.click();
-    });
-    await page.click("#q");
-    await page.type("#q", "9998877");
     await waitFor(page, function() {
       var text = document.querySelector("#leads").innerText;
-      return text.indexOf("דנה לוי") >= 0 && text.indexOf("יוסי כהן") < 0;
-    }, "search");
+      var openChip = Array.prototype.slice.call(document.querySelectorAll("#chips button")).find(function(b) { return b.textContent.indexOf("פתוחות") === 0; });
+      return text.indexOf("דנה לוי") < 0 && text.indexOf("יוסי כהן") < 0 && openChip && openChip.getAttribute("aria-pressed") === "true" && document.querySelector("#searchHint").hidden;
+    }, "default filter hides closed leads");
+    var phoneMatch = await page.evaluate(function() {
+      function blank(phone) { return { name: "", phone: phone, email: "", note: "", detail: "", service: "" }; }
+      var dana = { name: "דנה לוי", phone: "052-9998877", email: "dana@example.com", note: "להתקשר אחרי הצהריים", detail: "קבוצת מנהלות", service: "ניהול יומן ומיילים" };
+      return {
+        intl: leadMatches(dana, "+972-52-9998877"),
+        spaced: leadMatches(dana, "052 999 8877"),
+        plain: leadMatches(dana, "0529998877"),
+        storedIntl: leadMatches(blank("+972 54-000-1112"), "054-0001112"),
+        miss: leadMatches(dana, "0540001112"),
+        email: leadMatches(dana, "dana@example.com"),
+        note: leadMatches(dana, "אחרי הצהריים")
+      };
+    });
+    assert(phoneMatch.intl && phoneMatch.spaced && phoneMatch.plain && phoneMatch.storedIntl, "phone forms " + JSON.stringify(phoneMatch));
+    assert(!phoneMatch.miss && phoneMatch.email && phoneMatch.note, "other fields " + JSON.stringify(phoneMatch));
+    await setField(page, "#q", "+972-52-9998877");
+    await waitFor(page, function() {
+      var text = document.querySelector("#leads").innerText;
+      var row = Array.prototype.slice.call(document.querySelectorAll("#leads .item")).find(function(b) { return b.textContent.indexOf("דנה לוי") >= 0; });
+      var pill = row && row.querySelector(".pill");
+      var hint = document.querySelector("#searchHint");
+      var openChip = Array.prototype.slice.call(document.querySelectorAll("#chips button")).find(function(b) { return b.textContent.indexOf("פתוחות") === 0; });
+      return text.indexOf("דנה לוי") >= 0 && text.indexOf("יוסי כהן") < 0 && pill && pill.textContent === "נסגר" && pill.className.indexOf("ok") >= 0 && hint && !hint.hidden && hint.textContent.indexOf("מחפשת בכל הפניות, כולל סגורות") >= 0 && openChip.getAttribute("aria-pressed") === "true";
+    }, "search finds closed lead under the open filter");
+    await page.evaluate(function() { document.querySelector("#searchHint").scrollIntoView({ block: "center" }); });
+    await shot(page, "search-includes-closed.png", false);
     await page.evaluate(function() {
       var chip = Array.prototype.slice.call(document.querySelectorAll("#chips button")).find(function(b) { return b.textContent.indexOf("לא נסגר") === 0; });
       chip.click();
     });
-    await waitFor(page, function() { return document.querySelector("#leads").innerText.indexOf("לא נמצאו") >= 0; }, "filter excludes search miss");
+    await waitFor(page, function() {
+      var text = document.querySelector("#leads").innerText;
+      return text.indexOf("דנה לוי") >= 0 && text.indexOf("יוסי כהן") < 0 && !document.querySelector("#searchHint").hidden;
+    }, "active search ignores the status filter");
     await page.$eval("#q", function(el) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); });
-    await waitFor(page, function() { return document.querySelector("#leads").innerText.indexOf("יוסי כהן") >= 0; }, "lost filter");
+    await waitFor(page, function() {
+      var text = document.querySelector("#leads").innerText;
+      return document.querySelector("#searchHint").hidden && text.indexOf("יוסי כהן") >= 0 && text.indexOf("דנה לוי") < 0 && text.indexOf("לא נסגר") >= 0;
+    }, "cleared search restores the lost filter");
 
     await page.evaluate(function() {
       window.__files = [];
@@ -285,7 +312,63 @@ async function main() {
     assert(csv.text.indexOf("סיכמנו פגישה") >= 0, "csv log");
     assert(csv.bom, "excel bom");
 
+    await setField(page, "#q", "052 999 8877");
+    await page.click("#t-list");
+    await waitFor(page, function() { return document.querySelector("#leads").innerText.indexOf("דנה לוי") >= 0; }, "spaces in the phone still find the closed lead");
+    await openLead(page, "דנה לוי");
+    await waitFor(page, function() {
+      return Array.prototype.slice.call(document.querySelectorAll("#panel button")).some(function(b) { return b.textContent === "פתיחה מחדש"; });
+    }, "reopen button on a won lead");
+    await shot(page, "reopen-button.png", false);
+    var beforeReopen = await page.evaluate(function() {
+      var l = window.leads.filter(function(x) { return x.name === "דנה לוי"; })[0];
+      return { log: l.log.map(function(x) { return { t: x.t, text: x.text }; }), email: l.email, phone: l.phone, note: l.note, meeting: l.meeting, service: l.service, source: l.source, detail: l.detail, followUp: l.followUp, date: l.date, package: l.package };
+    });
+    await page.evaluate(function() {
+      Array.prototype.slice.call(document.querySelectorAll("#panel button")).find(function(b) { return b.textContent === "פתיחה מחדש"; }).click();
+    });
+    await waitFor(page, function() {
+      var l = window.leads.filter(function(x) { return x.name === "דנה לוי"; })[0];
+      var texts = (l.log || []).map(function(x) { return x.text; });
+      return l.status === "בתהליך" && l.package === "" && l.lostReason === "" && texts.indexOf("סיכמנו פגישה") >= 0 && texts.indexOf("הפנייה נפתחה מחדש") >= 0 && texts.length === 2;
+    }, "reopen won lead keeps the log");
+    var afterReopen = await page.evaluate(function() {
+      var l = window.leads.filter(function(x) { return x.name === "דנה לוי"; })[0];
+      var prior = (l.log || []).filter(function(x) { return x.text === "סיכמנו פגישה"; })[0];
+      return { t: prior && prior.t, email: l.email, phone: l.phone, note: l.note, meeting: l.meeting, service: l.service, source: l.source, detail: l.detail, followUp: l.followUp, date: l.date, statusLabel: document.querySelector("#panel .phead .pill").textContent, button: Array.prototype.slice.call(document.querySelectorAll("#panel button")).some(function(b) { return b.textContent === "פתיחה מחדש"; }), log: document.querySelector("#panel .log").innerText };
+    });
+    assert(afterReopen.t === beforeReopen.log[0].t, "prior log timestamp kept");
+    assert(afterReopen.email === beforeReopen.email && afterReopen.phone === beforeReopen.phone && afterReopen.note === beforeReopen.note, "contact kept");
+    assert(afterReopen.meeting === true && afterReopen.service === beforeReopen.service && afterReopen.source === beforeReopen.source && afterReopen.detail === beforeReopen.detail, "details kept");
+    assert(afterReopen.followUp === beforeReopen.followUp && afterReopen.date === beforeReopen.date, "dates kept");
+    assert(beforeReopen.package === "שוטפת", "package was set before reopen");
+    assert(afterReopen.statusLabel === "בתהליך" && !afterReopen.button, "panel shows the reopened status");
+    assert(afterReopen.log.indexOf("סיכמנו פגישה") >= 0 && afterReopen.log.indexOf("הפנייה נפתחה מחדש") >= 0, "history visible");
+    await page.evaluate(function() { document.querySelector("#panel .log").scrollIntoView({ block: "center" }); });
+    await shot(page, "reopen-keeps-history.png", false);
+    await page.keyboard.press("Escape");
+    await waitFor(page, function() { return document.querySelector("#sheet").hidden; }, "reopen panel closed");
+
+    await page.$eval("#q", function(el) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); });
+    await page.evaluate(function() {
+      var chip = Array.prototype.slice.call(document.querySelectorAll("#chips button")).find(function(b) { return b.textContent.indexOf("לא נסגר") === 0; });
+      chip.click();
+    });
     await openLead(page, "יוסי כהן");
+    await page.evaluate(function() {
+      var ta = document.querySelector('#panel textarea[aria-label="מה היה בשיחה"]');
+      ta.value = "נשאר ביומן";
+      Array.prototype.slice.call(document.querySelectorAll("#panel button")).find(function(b) { return b.textContent === "הוספה ליומן"; }).click();
+    });
+    await waitFor(page, function() { return document.querySelector("#panel .log") && document.querySelector("#panel .log").textContent.indexOf("נשאר ביומן") >= 0; }, "yossi log");
+    await page.evaluate(function() {
+      Array.prototype.slice.call(document.querySelectorAll("#panel button")).find(function(b) { return b.textContent === "פתיחה מחדש"; }).click();
+    });
+    await waitFor(page, function() {
+      var l = window.leads.filter(function(x) { return x.name === "יוסי כהן"; })[0];
+      var texts = (l.log || []).map(function(x) { return x.text; });
+      return l.status === "בתהליך" && l.lostReason === "" && l.package === "" && l.note === "יקר לו" && l.phone === "054-0001112" && texts.indexOf("נשאר ביומן") >= 0 && texts.indexOf("הפנייה נפתחה מחדש") >= 0;
+    }, "reopen lost lead clears the reason and keeps the log");
     await page.click("#panel .btn.danger");
     await page.click("#panel .btn.danger");
     await waitFor(page, function() {
@@ -294,7 +377,10 @@ async function main() {
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitFor(page, function() {
-      return window.mode === "app" && window.leads.some(function(l) { return l.name === "דנה לוי" && l.package === "שוטפת"; }) && !window.leads.some(function(l) { return l.name === "יוסי כהן"; });
+      return window.mode === "app" && window.leads.some(function(l) {
+        var texts = (l.log || []).map(function(x) { return x.text; });
+        return l.name === "דנה לוי" && l.status === "בתהליך" && l.package === "" && texts.indexOf("סיכמנו פגישה") >= 0 && texts.indexOf("הפנייה נפתחה מחדש") >= 0;
+      }) && !window.leads.some(function(l) { return l.name === "יוסי כהן"; });
     }, "reload keeps the sheet");
 
     await page.click("#settingsBtn");
