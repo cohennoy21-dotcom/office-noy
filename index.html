@@ -66,12 +66,14 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .full{grid-column:1/-1}
 .btn{font:inherit;font-weight:700;font-size:17px;min-height:48px;padding:0 24px;border:0;cursor:pointer;background:linear-gradient(180deg,var(--gold-soft),var(--gold-hi) 45%,var(--gold));color:var(--onGold);display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
 .btn[disabled]{opacity:.5;cursor:default}
+.btn.reopen{width:100%}
 .btn.sm{min-height:40px;font-size:14px;padding:0 14px;font-weight:500;background:none;border:1px solid var(--gold);color:var(--gold-hi)}
 .btn.danger{border-color:var(--bad);color:var(--bad)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{font:inherit;font-size:14px;background:none;color:var(--muted);border:1px solid var(--line);padding:6px 14px;cursor:pointer;min-height:36px}
 .chip[aria-pressed="true"]{color:var(--gold-soft);border-color:var(--gold);background:var(--panel2)}
 .tools{display:flex;flex-direction:column;gap:12px}
+.hint{margin:0;color:var(--muted);font-size:13px}
 .toolrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
 .toolrow select{width:auto}
 .ltr{direction:ltr;unicode-bidi:plaintext}
@@ -188,6 +190,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
         <label for="sort">מיון<select id="sort"><option value="fu">תאריך חזרה</option><option value="new">החדשות קודם</option><option value="old">הישנות קודם</option><option value="name">לפי שם</option></select></label>
       </div>
       <div class="chips" id="chips" role="group" aria-label="סינון לפי סטטוס"></div>
+      <p class="hint" id="searchHint" hidden>מחפשת בכל הפניות, כולל סגורות</p>
     </div>
     <div id="leads"></div>
   </div>
@@ -316,19 +319,39 @@ function renderChips(){
     var b=el("button","chip",s+" ("+n+")");b.type="button";b.setAttribute("aria-pressed",String(filter===s));
     b.addEventListener("click",function(){filter=s;renderList();renderChips()});box.appendChild(b)});
 }
+function phoneDigits(s){return String(s||"").replace(/\D/g,"")}
+function phoneForms(s){
+  var d=phoneDigits(s);if(!d)return [];
+  var forms=[d];
+  if(d.indexOf("972")===0&&d.length>3)forms.push("0"+d.slice(3));
+  else if(d.charAt(0)==="0"&&d.length>1)forms.push("972"+d.slice(1));
+  return forms;
+}
+function isPhoneQuery(q){return /^[+\d][\d\s().\-]*$/.test(q)&&phoneDigits(q).length>=3}
+function leadMatches(l,q){
+  q=String(q||"").trim().toLowerCase();if(!q)return true;
+  if([l.name,l.phone,l.email,l.note,l.detail,l.service].join(" ").toLowerCase().indexOf(q)>=0)return true;
+  if(!isPhoneQuery(q))return false;
+  var qs=phoneForms(q),ps=phoneForms(l.phone),i,j;
+  for(i=0;i<qs.length;i++)for(j=0;j<ps.length;j++)if(ps[j].indexOf(qs[i])>=0)return true;
+  return false;
+}
 function renderList(){
-  var q=query.trim().toLowerCase();
+  var q=query.trim();
+  var searching=!!q;
+  $("searchHint").hidden=!searching;
   var rows=leads.filter(function(l){
+    if(searching)return leadMatches(l,q);
     if(filter==="פתוחות"&&!isOpen(l))return false;
     if(filter!=="הכל"&&filter!=="פתוחות"&&l.status!==filter)return false;
-    if(!q)return true;
-    return [l.name,l.phone,l.email,l.note,l.detail,l.service].join(" ").toLowerCase().indexOf(q)>=0;
+    return true;
   });
   if(sortBy==="fu")rows.sort(byFu);
   else if(sortBy==="new")rows.sort(function(a,b){return (b.date||"")<(a.date||"")?-1:(b.date||"")>(a.date||"")?1:(b.createdAt||0)-(a.createdAt||0)});
   else if(sortBy==="old")rows.sort(function(a,b){return (a.date||"")<(b.date||"")?-1:(a.date||"")>(b.date||"")?1:(a.createdAt||0)-(b.createdAt||0)});
   else rows.sort(function(a,b){return (a.name||"").localeCompare(b.name||"","he")});
-  swap("leads",listOf(rows,leads.length?"לא נמצאו פניות שמתאימות לסינון.":"עדיין לא נרשמו פניות. אפשר להוסיף את הראשונה בלשונית פנייה חדשה."));
+  var empty=leads.length?(searching?"לא נמצאו פניות שמתאימות לחיפוש.":"לא נמצאו פניות שמתאימות לסינון."):"עדיין לא נרשמו פניות. אפשר להוסיף את הראשונה בלשונית פנייה חדשה.";
+  swap("leads",listOf(rows,empty));
 }
 $("q").addEventListener("input",function(){query=$("q").value;renderList()});
 $("sort").addEventListener("change",function(){sortBy=$("sort").value;renderList()});
@@ -397,6 +420,7 @@ function copyBtn(text,label){
 }
 function selectText(node){try{var r=document.createRange();r.selectNodeContents(node);var s=window.getSelection();s.removeAllRanges();s.addRange(r)}catch(e){}}
 function waNumber(p){var d=String(p||"").replace(/\D/g,"");if(!d)return "";if(d.charAt(0)==="0")d="972"+d.slice(1);return d}
+function statusPatch(s){var pt={status:s};if(s!=="נסגר")pt.package="";if(s!=="לא נסגר")pt.lostReason="";return pt}
 
 function renderPanel(){
   var l=findLead(openId),p=$("panel");
@@ -424,8 +448,20 @@ function renderPanel(){
   var st=el("div","block");st.appendChild(el("span","lbl","סטטוס"));
   var seg=el("div","seg");seg.setAttribute("role","group");seg.setAttribute("aria-label","סטטוס");
   STATUSES.forEach(function(s){var b=el("button",null,s);b.type="button";b.setAttribute("aria-pressed",String(l.status===s));
-    b.addEventListener("click",function(){if(l.status===s)return;var pt={status:s};if(s!=="נסגר")pt.package="";if(s!=="לא נסגר")pt.lostReason="";save(l.id,pt)});seg.appendChild(b)});
+    b.addEventListener("click",function(){if(l.status===s)return;save(l.id,statusPatch(s))});seg.appendChild(b)});
   st.appendChild(seg);
+  if(l.status==="נסגר"||l.status==="לא נסגר"){
+    var rb=el("button","btn reopen","פתיחה מחדש");rb.type="button";
+    rb.addEventListener("click",function(){
+      if(rb.disabled)return;rb.disabled=true;
+      var pt=statusPatch("בתהליך");
+      var log=(l.log||[]).slice();
+      log.push({t:Date.now(),text:"הפנייה נפתחה מחדש"});
+      pt.log=log;
+      save(l.id,pt).then(function(){var cur=findLead(l.id);if(cur&&cur.status!=="בתהליך")rb.disabled=false});
+    });
+    st.appendChild(rb);
+  }
   if(l.status==="נסגר"){var ps=document.createElement("select");fill(ps,Object.keys(PACKAGES).map(function(k){return k}),"איזו חבילה");ps.value=l.package||"";
     Array.prototype.forEach.call(ps.options,function(o){if(o.value)o.textContent=o.value+", "+PACKAGES[o.value].toLocaleString("he-IL")+" ₪ לחודש"});
     ps.addEventListener("change",function(){save(l.id,{package:ps.value})});st.appendChild(field("חבילה",ps))}
